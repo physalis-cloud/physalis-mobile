@@ -1,0 +1,71 @@
+# Projet Xcode décrit en YAML (XcodeGen), généré sur le runner macOS de la CI.
+#
+# Pourquoi : l'app est écrite sans Mac (plan mots-de-passe-quotidien §5 bis).
+# Éditer un project.pbxproj à la main est fragile ; ici, ajouter l'extension de
+# remplissage (R4) revient à ajouter une cible. App.xcodeproj n'est donc PAS
+# versionné : `xcodegen generate` le recrée, AVANT `npx cap sync ios` qui le lit.
+#
+# Signature automatique (clé d'API App Store Connect passée à xcodebuild) :
+# seul l'identifiant d'équipe est à fournir, par la variable DEVELOPMENT_TEAM.
+name: App
+options:
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+configs:
+  Debug: debug
+  Release: release
+packages:
+  CapApp-SPM:
+    path: CapApp-SPM
+settings:
+  base:
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  App:
+    type: application
+    platform: iOS
+    configFiles:
+      Debug: ../debug.xcconfig
+    sources:
+      - path: App
+        excludes:
+          - public
+          - capacitor.config.json
+          - config.xml
+      # Produits par `cap sync`, qui tourne APRÈS la génération : déclarés un à
+      # un et `optional` pour être référencés même absents à ce moment-là.
+      # Sans capacitor.config.json dans le bundle, l'app ignorerait server.url.
+      # `public` est copié tel quel (référence de dossier) : Capacitor y cherche
+      # index.html et offline.html.
+      - path: App/public
+        type: folder
+        buildPhase: resources
+        optional: true
+      - path: App/capacitor.config.json
+        buildPhase: resources
+        optional: true
+      - path: App/config.xml
+        buildPhase: resources
+        optional: true
+      - path: Shared
+    dependencies:
+      - package: CapApp-SPM
+        product: CapApp-SPM
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cloud.physalis.app
+        PRODUCT_NAME: App
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/App.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # iPhone seulement en v1 : pas de captures iPad à fournir au store.
+        TARGETED_DEVICE_FAMILY: "1"
+      configs:
+        Debug:
+          OTHER_SWIFT_FLAGS: "$(inherited) -DDEBUG"
+    scheme: {}

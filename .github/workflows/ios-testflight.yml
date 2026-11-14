@@ -1,0 +1,105 @@
+# Compile l'app iOS et l'envoie sur TestFlight.
+#
+# Dépôt public → minutes macOS gratuites (plan mots-de-passe-quotidien §5 bis,
+# D10). Signature automatique : Xcode crée lui-même certificat et profils à
+# partir d'une clé d'API App Store Connect (rôle Admin), pour l'app et, plus
+# tard, pour l'extension de remplissage.
+#
+# Secrets du dépôt :
+#   APPLE_TEAM_ID       identifiant d'équipe (10 caractères)
+#   ASC_KEY_ID          identifiant de la clé d'API App Store Connect
+#   ASC_ISSUER_ID       identifiant de l'émetteur (Issuer ID)
+#   ASC_KEY_P8          contenu du fichier AuthKey_<id>.p8
+#
+# Les secrets ne sont jamais exposés aux pull requests venues d'un fork : ce
+# workflow ne se déclenche que sur main et à la main.
+name: iOS → TestFlight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - "www/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/ios-testflight.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dépendances
+        run: |
+          npm ci
+          brew install xcodegen
+
+      - name: Projet Xcode (XcodeGen), puis synchronisation Capacitor
+        working-directory: ios/App
+        run: |
+          xcodegen generate
+          cd ../.. && npx cap sync ios
+
+      - name: Clé d'API App Store Connect
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - name: Archive signée
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild archive \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination generic/platform=iOS \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+
+      - name: Envoi sur TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          plutil -replace teamID -string "$DEVELOPMENT_TEAM" ios/ci/ExportOptions.plist
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist ios/ci/ExportOptions.plist \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Nettoyage de la clé
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"
