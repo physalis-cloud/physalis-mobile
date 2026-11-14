@@ -20,9 +20,15 @@ Android suivra sur la même architecture.
     lira le même trousseau.
 - **Pas de Mac requis** : le projet Xcode est décrit dans `ios/App/project.yml`
   ([XcodeGen](https://github.com/yonaskolb/XcodeGen)) et généré par la CI, qui
-  compile, signe et envoie sur TestFlight (`.github/workflows/ios-testflight.yml`).
+  compile, signe et envoie sur TestFlight (`.github/workflows/ios-testflight.yml`)
+  avec la clé d'API Apple détenue par Physalis.
 
 ## Mise en place (une fois)
+
+Le dépôt n'a **aucun secret GitHub** : la clé d'API Apple est détenue par
+Physalis et servie au workflow par OIDC (action
+[`mobile-actions/credentials`](https://github.com/physalis-cloud/mobile-actions),
+`signing: automatic`).
 
 Côté Apple, avec le compte développeur ArgoWeb :
 
@@ -33,22 +39,23 @@ Côté Apple, avec le compte développeur ArgoWeb :
    « Physalis », bundle ID `cloud.physalis.app`, SKU au choix.
 3. **Clé d'API** : Utilisateurs et accès → Intégrations → API App Store
    Connect → clé d'équipe, rôle **Admin** (nécessaire pour que Xcode crée
-   certificats et profils). Télécharger le `.p8` (une seule fois possible).
+   certificats et profils). Télécharger le `.p8` (une seule fois possible),
+   noter son identifiant et l'Issuer ID.
 4. **TestFlight** : dans l'app, onglet TestFlight → test interne → s'ajouter
    comme testeur.
 
-Côté GitHub, secrets du dépôt (Settings → Secrets and variables → Actions) :
+Côté Physalis (espace ArgoWeb), onglet **Mobile** d'un projet :
 
-| Secret | Valeur |
-|---|---|
-| `APPLE_TEAM_ID` | identifiant d'équipe (Membership details) |
-| `ASC_KEY_ID` | identifiant de la clé d'API |
-| `ASC_ISSUER_ID` | Issuer ID affiché au-dessus de la liste des clés |
-| `ASC_KEY_P8` | contenu complet du fichier `.p8` |
+1. Application iOS `cloud.physalis.app`, nom « Physalis », **Team ID /
+   éditeur** = identifiant d'équipe Apple (10 caractères).
+2. Matériel : la clé d'API (`.p8`), son identifiant, l'Issuer ID. **Ni
+   certificat `.p12` ni profil** : la signature est automatique.
+3. Policy mobile : GitHub, dépôt `physalis-cloud/physalis-mobile`, workflow
+   `.github/workflows/ios-testflight.yml`, branche `main` → cette application.
 
 Puis lancer le workflow « iOS → TestFlight » (onglet Actions, ou un push sur
 `main`). Le build apparaît dans TestFlight après le traitement d'Apple
-(5 à 30 minutes).
+(5 à 30 minutes), et la livraison dans le registre de l'onglet Mobile.
 
 ## Développer
 
