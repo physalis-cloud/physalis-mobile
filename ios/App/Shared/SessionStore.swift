@@ -91,15 +91,43 @@ enum SessionStore {
         }
     }
 
+    /// Résultat d'une lecture du jeton, avec la cause d'un échec : « ouvrez
+    /// l'app » n'est la bonne réponse que si le jeton est réellement absent.
+    enum TokenRead: Sendable {
+        case token(String)
+        /// Aucun jeton rangé (jamais connecté, déconnecté, ou invalidé par un
+        /// changement de Face ID).
+        case missing
+        /// Face ID ou le code annulé / refusé : il suffit de réessayer.
+        case canceled
+        /// Autre erreur du trousseau, code OSStatus conservé pour le diagnostic.
+        case failed(OSStatus)
+    }
+
     /// Lit le jeton : déclenche Face ID (ou le code). Utilisé par l'extension
-    /// de remplissage (R4), jamais par l'app.
-    static func readToken(reason: String) -> String? {
+    /// de remplissage, jamais par l'app. À appeler HORS du fil principal.
+    static func readToken(reason: String) -> TokenRead {
         let context = LAContext()
         context.localizedReason = reason
         var query = baseQuery(service: sessionService, account: "token", shared: true)
         query[kSecUseAuthenticationContext as String] = context
-        guard let data = copyData(query) else { return nil }
-        return String(data: data, encoding: .utf8)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data, let token = String(data: data, encoding: .utf8) else {
+                return .failed(status)
+            }
+            return .token(token)
+        case errSecItemNotFound:
+            return .missing
+        case errSecUserCanceled, errSecAuthFailed:
+            return .canceled
+        default:
+            return .failed(status)
+        }
     }
 
     static func clear() {

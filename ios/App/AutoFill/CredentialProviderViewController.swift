@@ -25,6 +25,9 @@ class CredentialProviderViewController: ASCredentialProviderViewController,
     /// Entrée choisie via une suggestion du clavier : remplie dès que `/match`
     /// répond, sans afficher la liste.
     private var pendingRecordId: String?
+    private var hasAppeared = false
+    private var unlockPending = false
+    private let retryButton = UIButton(type: .system)
 
     private let domainLabel = UILabel()
     private let searchBar = UISearchBar()
@@ -47,7 +50,7 @@ class CredentialProviderViewController: ASCredentialProviderViewController,
         loadViewIfNeeded()
         domain = serviceIdentifiers.lazy.compactMap(Self.host(of:)).first
         domainLabel.text = domain ?? Text.noDomain
-        unlock()
+        requestUnlock()
     }
 
     /// Suggestion du clavier touchée. Le jeton est protégé par la biométrie :
@@ -69,28 +72,60 @@ class CredentialProviderViewController: ASCredentialProviderViewController,
             domain = credentialIdentity.serviceIdentifier.identifier.lowercased()
         }
         domainLabel.text = domain
-        unlock()
+        requestUnlock()
     }
 
     // MARK: - Déroulé
 
+    /// Face ID ne peut s'afficher qu'une fois l'écran de l'extension présenté :
+    /// demandé plus tôt (suggestions du clavier), la lecture du trousseau
+    /// échouait. On attend donc `viewDidAppear`.
+    private func requestUnlock() {
+        if hasAppeared {
+            unlock()
+        } else {
+            unlockPending = true
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        hasAppeared = true
+        if unlockPending {
+            unlockPending = false
+            unlock()
+        }
+    }
+
+    @objc private func retryTapped() {
+        unlock()
+    }
+
     private func unlock() {
+        retryButton.isHidden = true
         setStatus(Text.unlocking, loading: true)
         Task {
             // Lecture du trousseau HORS du fil principal : elle attend Face ID.
-            let token = await Task.detached(priority: .userInitiated) {
+            let read = await Task.detached(priority: .userInitiated) {
                 SessionStore.readToken(reason: Text.unlockReason)
             }.value
-            guard let token = token else {
+            switch read {
+            case .token(let token):
+                self.token = token
+                // Rafraîchit les suggestions du clavier en tâche de fond.
+                Task.detached(priority: .utility) {
+                    await CredentialIdentities.sync(token: token)
+                }
+                await loadMatches()
+            case .missing:
                 setStatus(Text.notConnected, loading: false)
-                return
+            case .canceled:
+                setStatus(Text.unlockCanceled, loading: false)
+                retryButton.isHidden = false
+            case .failed(let status):
+                setStatus(Text.keychainError(status), loading: false)
+                retryButton.isHidden = false
             }
-            self.token = token
-            // Rafraîchit les suggestions du clavier en tâche de fond.
-            Task.detached(priority: .utility) {
-                await CredentialIdentities.sync(token: token)
-            }
-            await loadMatches()
         }
     }
 
@@ -278,11 +313,15 @@ class CredentialProviderViewController: ASCredentialProviderViewController,
         statusLabel.textColor = .secondaryLabel
         statusLabel.isHidden = true
 
+        retryButton.setTitle(Text.retry, for: .normal)
+        retryButton.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
+        retryButton.isHidden = true
+
         tableView.dataSource = self
         tableView.delegate = self
         tableView.keyboardDismissMode = .onDrag
 
-        let stack = UIStackView(arrangedSubviews: [header, searchBar, statusLabel, tableView])
+        let stack = UIStackView(arrangedSubviews: [header, searchBar, statusLabel, retryButton, tableView])
         stack.axis = .vertical
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -337,6 +376,17 @@ private enum Text {
     static var searchSection: String { pick("Résultats", "Results", "Resultados") }
     static var noSearchResult: String { pick("Aucun résultat.", "No results.", "Sin resultados.") }
     static var unavailable: String { pick("Cet identifiant n'est plus disponible.", "This login is no longer available.", "Este acceso ya no está disponible.") }
+    static var retry: String { pick("Réessayer", "Try again", "Reintentar") }
+    static var unlockCanceled: String {
+        pick("Déverrouillage annulé ou refusé.", "Unlock canceled or refused.", "Desbloqueo cancelado o rechazado.")
+    }
+
+    static func keychainError(_ status: OSStatus) -> String {
+        pick("Lecture du trousseau impossible (code \(status)).",
+             "Could not read the keychain (code \(status)).",
+             "No se pudo leer el llavero (código \(status)).")
+    }
+
     static var notConnected: String {
         pick("Ouvrez l'app Physalis et connectez-vous : le remplissage automatique utilise la session de l'app.",
              "Open the Physalis app and sign in: AutoFill uses the app's session.",
