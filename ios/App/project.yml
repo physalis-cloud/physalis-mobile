@@ -56,6 +56,8 @@ targets:
     dependencies:
       - package: CapApp-SPM
         product: CapApp-SPM
+      # Extension embarquée dans l'app (PlugIns/AutoFill.appex).
+      - target: AutoFill
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cloud.physalis.app
@@ -69,3 +71,21 @@ targets:
         Debug:
           OTHER_SWIFT_FLAGS: "$(inherited) -DDEBUG"
     scheme: {}
+
+  # Extension de remplissage automatique (R4). Même numéro de build que l'app
+  # (CURRENT_PROJECT_VERSION passé à xcodebuild vaut pour toutes les cibles) :
+  # Apple refuse une extension dont la version diffère de l'app hôte.
+  AutoFill:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: AutoFill
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cloud.physalis.app.autofill
+        PRODUCT_NAME: AutoFill
+        INFOPLIST_FILE: AutoFill/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AutoFill/AutoFill.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+        APPLICATION_EXTENSION_API_ONLY: YES

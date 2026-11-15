@@ -16,8 +16,11 @@ Android suivra sur la même architecture.
     derrière Face ID. Contrat côté web : `lib/native-app.ts` du vault.
   - `PrivacyLock` cache l'app dans le sélecteur d'apps et demande Face ID au
     lancement et après une minute en arrière-plan.
-  - L'extension de remplissage automatique arrive dans un second temps ; elle
-    lira le même trousseau.
+  - L'extension de remplissage automatique (`ios/App/AutoFill/`) lit ce même
+    jeton (Face ID), propose les identifiants du site demandé
+    (`/api/plugin/match`) et une recherche dans l'inventaire sans secret
+    (`/api/plugin/items`). À activer sur l'iPhone : Réglages → Général →
+    Remplissage automatique et mots de passe → Physalis.
 - **Pas de Mac requis** : le projet Xcode est décrit dans `ios/App/project.yml`
   ([XcodeGen](https://github.com/yonaskolb/XcodeGen)) et généré par la CI, qui
   compile, signe et envoie sur TestFlight (`.github/workflows/ios-testflight.yml`)

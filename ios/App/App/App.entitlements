@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- L'app héberge l'extension de remplissage : la capacité doit figurer sur
+	     l'app ET sur l'extension. -->
+	<key>com.apple.developer.authentication-services.autofill-credential-provider</key>
+	<true/>
 	<!-- Trousseau partagé avec l'extension de remplissage (R4). Même valeur que
 	     PhysalisKeychainGroup dans Info.plist. -->
 	<key>keychain-access-groups</key>
