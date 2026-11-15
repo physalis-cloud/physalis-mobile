@@ -39,6 +39,11 @@ public class PhysalisAuthPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func getState(_ call: CAPPluginCall) {
         guard fromTrustedPage(call) else { return }
+        // Appelé par CHAQUE page connectée de l'espace (NativeAppHandoff du
+        // layout du dashboard), et pas seulement quand un jeton est remis — qui
+        // n'arrive qu'une fois par 24 h. Retenir l'origine ICI : sinon un
+        // utilisateur déjà muni d'un jeton n'est jamais rouvert sur son espace.
+        LastOrigin.remember(pageURL())
         let meta = SessionStore.meta()
         call.resolve([
             "platform": "ios",
