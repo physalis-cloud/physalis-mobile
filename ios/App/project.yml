@@ -68,4 +68,10 @@ targets:
       configs:
         Debug:
           OTHER_SWIFT_FLAGS: "$(inherited) -DDEBUG"
+        # Archive signée DIRECTEMENT en distribution : sinon Xcode cherche un
+        # profil de développement, qui exige un appareil enregistré dans
+        # l'équipe (« No profiles … iOS App Development », 1er run du
+        # 2026-11-15). L'export App Store re-signe de toute façon.
+        Release:
+          CODE_SIGN_IDENTITY: "Apple Distribution"
     scheme: {}
