@@ -20,17 +20,21 @@ public class PhysalisAuthPlugin: CAPPlugin, CAPBridgedPlugin {
     /// charge pas d'autre (allowNavigation), mais un jeton d'accès au coffre
     /// mérite une seconde garde.
     private func fromTrustedPage(_ call: CAPPluginCall) -> Bool {
-        // `webView` est un objet UIKit : on le lit sur le fil principal, sans
-        // s'y bloquer si l'appel y arrive déjà.
-        var host: String?
-        if Thread.isMainThread {
-            host = bridge?.webView?.url?.host
-        } else {
-            DispatchQueue.main.sync { host = self.bridge?.webView?.url?.host }
-        }
-        if PhysalisConfig.isTrusted(host: host) { return true }
+        if PhysalisConfig.isTrusted(host: pageURL()?.host) { return true }
         call.reject("Untrusted origin", "UNTRUSTED")
         return false
+    }
+
+    /// URL de la page courante. `webView` est un objet UIKit : on le lit sur le
+    /// fil principal, sans s'y bloquer si l'appel y arrive déjà.
+    private func pageURL() -> URL? {
+        var url: URL?
+        if Thread.isMainThread {
+            url = bridge?.webView?.url
+        } else {
+            DispatchQueue.main.sync { url = self.bridge?.webView?.url }
+        }
+        return url
     }
 
     @objc func getState(_ call: CAPPluginCall) {
@@ -62,6 +66,9 @@ public class PhysalisAuthPlugin: CAPPlugin, CAPBridgedPlugin {
                 token: token,
                 meta: .init(email: email, tenantSlug: tenantSlug, issuedAt: issuedAt, expiresAt: expiresAt)
             )
+            // La page qui remet le jeton est celle de l'espace où vit la session
+            // web : l'app y rouvrira directement (cf. LastOrigin).
+            LastOrigin.remember(pageURL())
             call.resolve()
         } catch SessionStore.StoreError.passcodeNotSet {
             call.reject("A device passcode is required", "PASSCODE_NOT_SET")
@@ -73,6 +80,8 @@ public class PhysalisAuthPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func signOut(_ call: CAPPluginCall) {
         // Pas de garde d'origine : effacer ne divulgue rien.
         SessionStore.clear()
+        // Déconnexion : le prochain lancement repart du portail partagé.
+        LastOrigin.forget()
         call.resolve()
     }
 }
