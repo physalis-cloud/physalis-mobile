@@ -22,6 +22,9 @@ class CredentialProviderViewController: ASCredentialProviderViewController,
     private var matches: [PhysalisAPI.Credential] = []
     private var inventory: [PhysalisAPI.Item]?
     private var searchResults: [PhysalisAPI.Item] = []
+    /// Entrée choisie via une suggestion du clavier : remplie dès que `/match`
+    /// répond, sans afficher la liste.
+    private var pendingRecordId: String?
 
     private let domainLabel = UILabel()
     private let searchBar = UISearchBar()
@@ -47,6 +50,28 @@ class CredentialProviderViewController: ASCredentialProviderViewController,
         unlock()
     }
 
+    /// Suggestion du clavier touchée. Le jeton est protégé par la biométrie :
+    /// impossible de le lire sans interface, on demande donc à iOS de l'ouvrir
+    /// (il rappelle alors `prepareInterfaceToProvideCredential`).
+    override func provideCredentialWithoutUserInteraction(for credentialIdentity: ASPasswordCredentialIdentity) {
+        extensionContext.cancelRequest(withError: NSError(
+            domain: ASExtensionErrorDomain,
+            code: ASExtensionError.userInteractionRequired.rawValue
+        ))
+    }
+
+    override func prepareInterfaceToProvideCredential(for credentialIdentity: ASPasswordCredentialIdentity) {
+        loadViewIfNeeded()
+        if let record = CredentialIdentities.parse(recordIdentifier: credentialIdentity.recordIdentifier) {
+            domain = record.domain
+            pendingRecordId = record.id
+        } else {
+            domain = credentialIdentity.serviceIdentifier.identifier.lowercased()
+        }
+        domainLabel.text = domain
+        unlock()
+    }
+
     // MARK: - Déroulé
 
     private func unlock() {
@@ -61,6 +86,10 @@ class CredentialProviderViewController: ASCredentialProviderViewController,
                 return
             }
             self.token = token
+            // Rafraîchit les suggestions du clavier en tâche de fond.
+            Task.detached(priority: .utility) {
+                await CredentialIdentities.sync(token: token)
+            }
             await loadMatches()
         }
     }
@@ -74,6 +103,15 @@ class CredentialProviderViewController: ASCredentialProviderViewController,
         setStatus(Text.loading, loading: true)
         do {
             matches = try await PhysalisAPI.match(domain: domain, token: token)
+            if let wanted = pendingRecordId {
+                pendingRecordId = nil
+                if let credential = matches.first(where: { $0.id == wanted }) {
+                    complete(with: credential)
+                    return
+                }
+                // Suggestion périmée (entrée supprimée ou déplacée) : on
+                // retombe sur la liste du site.
+            }
             setStatus(matches.isEmpty ? Text.noMatch(domain) : nil, loading: false)
         } catch {
             setStatus(Text.describe(error), loading: false)

@@ -70,6 +70,9 @@ public class PhysalisAuthPlugin: CAPPlugin, CAPBridgedPlugin {
             // web : l'app y rouvrira directement (cf. LastOrigin).
             LastOrigin.remember(pageURL())
             call.resolve()
+            // Suggestions du clavier : le jeton est en clair ICI, sans Face ID
+            // (il arrive de la page) — c'est le moment de rafraîchir la liste.
+            Task { await CredentialIdentities.sync(token: token) }
         } catch SessionStore.StoreError.passcodeNotSet {
             call.reject("A device passcode is required", "PASSCODE_NOT_SET")
         } catch {
@@ -82,6 +85,8 @@ public class PhysalisAuthPlugin: CAPPlugin, CAPBridgedPlugin {
         SessionStore.clear()
         // Déconnexion : le prochain lancement repart du portail partagé.
         LastOrigin.forget()
+        // Plus aucune suggestion Physalis au-dessus du clavier.
+        CredentialIdentities.clear()
         call.resolve()
     }
 }

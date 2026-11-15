@@ -1,6 +1,6 @@
 import Foundation
 
-/// Appels de l'extension au vault, avec le jeton d'app (Bearer). Mêmes routes
+/// Appels au vault (extension de remplissage, et l'app pour l'inventaire), avec le jeton d'app (Bearer). Mêmes routes
 /// que l'extension navigateur :
 ///   - GET /api/plugin/match?domain= : identifiants AVEC mot de passe, pour un
 ///     domaine (une ligne d'audit par appel côté serveur) ;
@@ -24,6 +24,10 @@ enum PhysalisAPI {
         let title: String
         let subtitle: String
         let domain: String
+        /// Identifiant de connexion, connu pour les entrées de coffre seulement
+        /// (celui des Services et comptes de projet est chiffré avec le mot
+        /// de passe et n'est pas dans l'inventaire).
+        let user: String?
     }
 
     enum APIError: Error {
@@ -86,11 +90,13 @@ enum PhysalisAPI {
             if let signInWith = entry["signInWith"] as? String, !signInWith.isEmpty { continue }
             guard let id = entry["id"] as? String,
                   let domain = entry["domain"] as? String, !domain.isEmpty else { continue }
+            let username = entry["username"] as? String
             out.append(Item(
                 id: id,
                 title: entry["name"] as? String ?? domain,
-                subtitle: entry["username"] as? String ?? domain,
-                domain: domain
+                subtitle: username ?? domain,
+                domain: domain,
+                user: (username?.isEmpty ?? true) ? nil : username
             ))
         }
         for key in ["services", "accounts"] {
@@ -101,7 +107,8 @@ enum PhysalisAPI {
                     id: id,
                     title: entry["name"] as? String ?? domain,
                     subtitle: entry["projectName"] as? String ?? domain,
-                    domain: domain
+                    domain: domain,
+                    user: nil
                 ))
             }
         }
